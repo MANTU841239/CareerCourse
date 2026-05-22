@@ -1,5 +1,4 @@
 const express = require("express");
-
 const bcrypt = require("bcryptjs");
 
 const db = require("../db");
@@ -8,7 +7,7 @@ const router = express.Router();
 
 
 
-// REGISTER
+// REGISTER USER
 
 router.post("/register", async (req, res) => {
 
@@ -16,17 +15,17 @@ router.post("/register", async (req, res) => {
 
     const { email, password } = req.body;
 
+    // CHECK EMPTY FIELDS
+
     if (!email || !password) {
 
       return res.status(400).json({
         success: false,
-        message: "All fields required",
+        message: "All fields are required",
       });
     }
 
-
-
-    // CHECK USER
+    // CHECK USER EXISTS
 
     db.query(
       "SELECT * FROM users WHERE email = ?",
@@ -44,6 +43,8 @@ router.post("/register", async (req, res) => {
           });
         }
 
+        // USER ALREADY EXISTS
+
         if (result.length > 0) {
 
           return res.status(400).json({
@@ -52,14 +53,10 @@ router.post("/register", async (req, res) => {
           });
         }
 
-
-
         // HASH PASSWORD
 
         const hashedPassword =
           await bcrypt.hash(password, 10);
-
-
 
         // INSERT USER
 
@@ -67,7 +64,7 @@ router.post("/register", async (req, res) => {
           "INSERT INTO users (email, password) VALUES (?, ?)",
           [email, hashedPassword],
 
-          (err) => {
+          (err, insertResult) => {
 
             if (err) {
 
@@ -75,13 +72,17 @@ router.post("/register", async (req, res) => {
 
               return res.status(500).json({
                 success: false,
-                message: "Insert failed",
+                message: "Registration Failed",
               });
             }
 
-            res.status(201).json({
+            return res.status(201).json({
               success: true,
-              message: "Registration successful",
+              message: "Registration Successful",
+              user: {
+                id: insertResult.insertId,
+                email: email,
+              },
             });
           }
         );
@@ -92,7 +93,7 @@ router.post("/register", async (req, res) => {
 
     console.log(error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server Error",
     });
@@ -101,63 +102,99 @@ router.post("/register", async (req, res) => {
 
 
 
-// LOGIN
+// LOGIN USER
 
 router.post("/login", (req, res) => {
 
-  const { email, password } = req.body;
+  try {
 
-  db.query(
-    "SELECT * FROM users WHERE email = ?",
-    [email],
+    const { email, password } = req.body;
 
-    async (err, result) => {
+    // CHECK EMPTY FIELDS
 
-      if (err) {
+    if (!email || !password) {
 
-        console.log(err);
-
-        return res.status(500).json({
-          success: false,
-          message: "Database Error",
-        });
-      }
-
-      if (result.length === 0) {
-
-        return res.status(400).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      const user = result[0];
-
-
-
-      // PASSWORD MATCH
-
-      const isMatch = await bcrypt.compare(
-        password,
-        user.password
-      );
-
-      if (!isMatch) {
-
-        return res.status(400).json({
-          success: false,
-          message: "Invalid password",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: "Login successful",
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
       });
     }
-  );
+
+    // FIND USER
+
+    db.query(
+      "SELECT * FROM users WHERE email = ?",
+      [email],
+
+      async (err, result) => {
+
+        if (err) {
+
+          console.log(err);
+
+          return res.status(500).json({
+            success: false,
+            message: "Database Error",
+          });
+        }
+
+        // USER NOT FOUND
+
+        if (result.length === 0) {
+
+          return res.status(400).json({
+            success: false,
+            message: "User not found",
+          });
+        }
+
+        const user = result[0];
+
+        console.log("Entered Password:", password);
+        console.log("Stored Password:", user.password);
+
+        // CHECK PASSWORD
+
+        const isMatch =
+          await bcrypt.compare(
+            password,
+            user.password
+          );
+
+        if (!isMatch) {
+
+          return res.status(400).json({
+            success: false,
+            message: "Invalid password",
+          });
+        }
+
+        // LOGIN SUCCESS
+
+        return res.status(200).json({
+          success: true,
+          message: "Login Successful",
+          user: {
+            id: user.id,
+            email: user.email,
+          },
+        });
+      }
+    );
+
+  } catch (error) {
+
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
 });
 
 
 
 module.exports = router;
+
+
